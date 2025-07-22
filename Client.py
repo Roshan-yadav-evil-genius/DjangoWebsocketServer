@@ -2,11 +2,11 @@ import requests
 import websockets
 import asyncio
 import getpass
+import json
 
 IP="127.0.0.1"
 PORT="8000"
 LOGIN_URL = f"http://{IP}:{PORT}/login/"
-WS_URL = f"ws://{IP}:{PORT}/ws/"
 
 def get_sessionid():
     username = input("Username: ")
@@ -56,8 +56,11 @@ async def main():
     sessionid = get_sessionid()
     if not sessionid:
         return
+    
+    
+    GROUP_NAME=input("Group ID:").replace(" ","")
 
-    client = WebSocketClient(WS_URL, sessionid)
+    client = WebSocketClient(f"ws://{IP}:{PORT}/ws/{GROUP_NAME}/", sessionid)
     await client.connect()
 
     # Start the receive coroutine as a background task
@@ -66,9 +69,10 @@ async def main():
     try:
         while True:
             msg = await asyncio.get_event_loop().run_in_executor(None, input, "Type message (or 'exit' to quit): ")
+            
             if msg.lower() == "exit":
                 break
-            await client.send(msg)
+            await client.send(json.dumps({"msg":msg}))
     finally:
         await client.disconnect()
         receive_task.cancel()
