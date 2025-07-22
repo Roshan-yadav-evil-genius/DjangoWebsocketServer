@@ -1,11 +1,21 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.exceptions import StopConsumer
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from django.contrib.auth.models import AbstractBaseUser
+
 class JsonConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        await self.accept()
-        # add the user to the group
-        await self.channel_layer.group_add("TheMedium", self.channel_name)
+        user: "AbstractBaseUser" = self.scope["user"]
+        
+        if user.is_anonymous:
+            print("[-] Dropping Anonymous User")
+            await self.close()
+        else:
+            await self.accept()
+            # add the user to the group
+            await self.channel_layer.group_add("TheMedium", self.channel_name)
         
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard("TheMedium", self.channel_name)
