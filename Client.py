@@ -4,20 +4,31 @@ import asyncio
 import getpass
 import json
 
-IP="127.0.0.1"
-PORT="8000"
-LOGIN_URL = f"http://{IP}:{PORT}/login/"
+# Configuration for dev and production
+DEV_IP = "127.0.0.1"
+PROD_IP = "20.197.32.163"  # Change this to your production IP
+PORT = "8000"
 
-def get_sessionid():
+def choose_mode():
+    mode = input("Select mode (dev/prod): ").strip().lower()
+    if mode == "prod":
+        print(f"[INFO] Running in PRODUCTION mode ({PROD_IP})")
+        return PROD_IP
+    else:
+        print(f"[INFO] Running in DEVELOPMENT mode ({DEV_IP})")
+        return DEV_IP
+
+def get_sessionid(login_url):
     username = input("Username: ")
     password = getpass.getpass("Password: ")
     session = requests.Session()
-    resp = session.post(LOGIN_URL, data={"username": username, "password": password})
+    print("[INFO] Logging in...")
+    resp = session.post(login_url, data={"username": username, "password": password})
     if resp.status_code == 200 and resp.json().get("success"):
-        print("Login successful.")
+        print("[SUCCESS] Login successful.")
         return session.cookies.get("sessionid")
     else:
-        print("Login failed:", resp.text)
+        print("[ERROR] Login failed:", resp.text)
         return None
 
 class WebSocketClient:
@@ -27,40 +38,43 @@ class WebSocketClient:
         self.ws = None
 
     async def connect(self):
-        print("Connecting to WebSocket...")
+        print(f"[INFO] Connecting to WebSocket at {self.ws_url} ...")
         self.ws = await websockets.connect(
             self.ws_url,
             additional_headers={"Cookie": f"sessionid={self.sessionid}"}
         )
-        print("Connected.")
+        print("[SUCCESS] Connected to WebSocket.")
 
     async def disconnect(self):
         if self.ws:
             await self.ws.close()
-            print("Disconnected.")
+            print("[INFO] Disconnected from WebSocket.")
 
     async def send(self, message):
         if self.ws:
             await self.ws.send(message)
-            print("Sent:", message)
+            print(f"[SEND] {message}")
 
     async def receive(self):
         if self.ws:
             try:
                 async for msg in self.ws:
-                    print("Received:", msg)
+                    print(f"[RECEIVED] {msg}")
             except websockets.ConnectionClosed:
-                print("Connection closed.")
+                print("[INFO] Connection closed by server.")
 
 async def main():
-    sessionid = get_sessionid()
+    ip = choose_mode()
+    LOGIN_URL = f"http://{ip}:{PORT}/login/"
+    sessionid = get_sessionid(LOGIN_URL)
+    print(f"[DEBUG] sessionid={sessionid}")
     if not sessionid:
+        print("[ERROR] Exiting due to failed login.")
         return
-    
-    
-    GROUP_NAME=input("Group ID:").replace(" ","")
 
-    client = WebSocketClient(f"ws://{IP}:{PORT}/ws/{GROUP_NAME}/", sessionid)
+    group_name = input("Enter Group ID: ").replace(" ", "")
+    ws_url = f"ws://{ip}:{PORT}/ws/{group_name}/"
+    client = WebSocketClient(ws_url, sessionid)
     await client.connect()
 
     # Start the receive coroutine as a background task
@@ -68,11 +82,11 @@ async def main():
 
     try:
         while True:
-            msg = await asyncio.get_event_loop().run_in_executor(None, input, "Type message (or 'exit' to quit): ")
-            
+            msg = await asyncio.get_event_loop().run_in_executor(None, input, "[INPUT] Type message (or 'exit' to quit): ")
             if msg.lower() == "exit":
+                print("[INFO] Exiting chat...")
                 break
-            await client.send(json.dumps({"msg":msg}))
+            await client.send(json.dumps({"msg": msg}))
     finally:
         await client.disconnect()
         receive_task.cancel()
